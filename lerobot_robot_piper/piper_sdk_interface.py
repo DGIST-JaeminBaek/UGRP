@@ -14,7 +14,7 @@ except Exception:
 
 
 class PiperSDKInterface:
-    def __init__(self, port: str = "can0", enable_timeout: float = 5.0):
+    def __init__(self, port: str = "can0", enable_timeout: float = 5.0, skip_enable: bool = False):
         if C_PiperInterface_V2 is None:
             raise ImportError("piper_sdk is not installed. Install with `pip install piper_sdk`.")
         try:
@@ -26,41 +26,57 @@ class PiperSDKInterface:
 
         try:
             self.piper.ConnectPort()
-            time.sleep(0.1)  # wait for connection to establish
         except Exception as e:
             log.error("ConnectPort failed: %s", e)
             raise
 
-        # reset the arm if it's not in idle state (safe resume)
+        # Wait for valid EEF data before proceeding — SDK returns all-zeros until the
+        # first CAN frame arrives. 2s is enough for a healthy CAN bus; log a warning if
+        # we time out (arm may physically be at origin, or CAN is slow).
+        _data_timeout = 2.0
+        _start = time.time()
+        while time.time() - _start < _data_timeout:
+            try:
+                ep = self.piper.GetArmEndPoseMsgs().end_pose
+                if ep.X_axis != 0 or ep.Y_axis != 0 or ep.Z_axis != 0:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.05)
+        else:
+            log.warning("EEF data still zero after %.1fs — arm may be at physical origin or CAN is slow", _data_timeout)
+
+        # Log arm status for debugging only — do not send any commands here.
+        # In slave mode the arm is actively following the master via CAN;
+        # sending EmergencyStop/resume would interrupt that sync.
         try:
             status = self.piper.GetArmStatus().arm_status
             log.debug("Initial arm motion_status=%s ctrl_mode=%s", getattr(status, "motion_status", None), getattr(status, "ctrl_mode", None))
-            if status.motion_status != 0:
-                self.piper.EmergencyStop(0x02)  # resume
-            if status.ctrl_mode == 2:
-                log.warning("Arm is in teaching mode (ctrl_mode==2). Attempting resume.")
-                self.piper.EmergencyStop(0x02)
         except Exception as e:
             log.debug("Unable to read arm status: %s", e)
 
-        # wait for EnablePiper with timeout to avoid infinite loop
-        start = time.time()
-        while True:
-            try:
-                ok = self.piper.EnablePiper()
-            except Exception:
-                ok = False
-            if ok:
-                break
-            if time.time() - start > enable_timeout:
-                raise TimeoutError(f"EnablePiper timed out after {enable_timeout} seconds")
-            time.sleep(0.01)
+        # In slave mode (recording) the arm is already enabled by the CAN master;
+        # calling EnablePiper() again is harmless but can cause a long wait or fail
+        # if the arm is in teaching mode. Skip it when the caller says so.
+        if not skip_enable:
+            start = time.time()
+            while True:
+                try:
+                    ok = self.piper.EnablePiper()
+                except Exception:
+                    ok = False
+                if ok:
+                    break
+                if time.time() - start > enable_timeout:
+                    raise TimeoutError(f"EnablePiper timed out after {enable_timeout} seconds")
+                time.sleep(0.01)
+        else:
+            log.debug("Skipping EnablePiper (slave mode)")
 
-        # Set motion control to joint mode at 100% speed
-        try:
-            self.piper.MotionCtrl_2(0x01, 0x01, 100, 0x00)
-        except Exception as e:
-            log.warning("MotionCtrl_2 failed: %s", e)
+        # Do NOT force MotionCtrl_2 here.
+        # In slave mode (recording), the CAN master-slave sync is already active and
+        # calling MotionCtrl_2 would reset the control mode and cause unwanted movement.
+        # Callers should set the mode explicitly when needed (e.g. before inference).
 
         # Get the min and max positions for each joint and gripper
         try:
@@ -167,9 +183,52 @@ class PiperSDKInterface:
 
         return obs_dict
 
+    def get_end_pose_raw(self) -> dict[str, int]:
+        """Return end-effector pose + gripper as raw SDK integers.
+
+        Units: position = 0.001 mm, rotation = 0.001 degree, gripper = SDK raw.
+        Matches LoRA-SP's read_end_pose_msg() field order: x, y, z, rx, ry, rz, gripper.
+        """
+        end_pose = self.piper.GetArmEndPoseMsgs().end_pose
+        gripper = self.piper.GetArmGripperMsgs().gripper_state
+        return {
+            "x": end_pose.X_axis,
+            "y": end_pose.Y_axis,
+            "z": end_pose.Z_axis,
+            "rx": end_pose.RX_axis,
+            "ry": end_pose.RY_axis,
+            "rz": end_pose.RZ_axis,
+            "gripper": gripper.grippers_angle,
+        }
+
+    def ctrl_end_pose(
+        self,
+        eef_data: list[int],
+        gripper_angle: int | None = None,
+        gripper_effort: int = 100,
+    ) -> None:
+        """Send end-effector pose command with optional gripper.
+
+        Mirrors LoRA-SP's ctrl_end_pose():
+          MotionCtrl_2(0x01, 0x00, ...) → end-pose mode
+          EndPoseCtrl(*eef_data)
+          GripperCtrl(abs(angle), effort, 0x01, 0)
+        """
+        self.piper.MotionCtrl_2(0x01, 0x00, 20, 0x00)
+        self.piper.EndPoseCtrl(*[int(v) for v in eef_data])
+        if gripper_angle is not None:
+            self.piper.GripperCtrl(int(abs(gripper_angle)), gripper_effort, 0x01, 0)
+
+    def zero_configuration(self, wait: float = 5.0) -> None:
+        """Move all joints to zero and close gripper. Blocks for `wait` seconds."""
+        self.piper.MotionCtrl_2(0x01, 0x01, 20, 0x00)
+        self.piper.JointCtrl(0, 0, 0, 0, 0, 0)
+        self.piper.GripperCtrl(0, 0, 0x01, 0)
+        self.piper.MotionCtrl_2(0x01, 0x01, 20, 0x00)
+        time.sleep(wait)
+
     def disconnect(self):
         try:
-            # safe stop; values are SDK-specific, keep as-is but guarded
             self.piper.JointCtrl(0, 0, 0, 0, 25000, 0)
         except Exception:
             log.debug("Disconnect: JointCtrl cleanup failed or piper already disconnected")

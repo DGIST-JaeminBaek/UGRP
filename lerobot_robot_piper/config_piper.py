@@ -5,41 +5,28 @@ from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.robots import RobotConfig
 
 
-
 @RobotConfig.register_subclass("piper")
 @dataclass
 class PiperConfig(RobotConfig):
     can_interface: str = "can0"
-    bitrate: int = 1_000_000
-    # Piper SDK returns 6 joints; keep order stable
-    joint_names: list[str] = field(default_factory=lambda: [f"joint_{i+1}" for i in range(6)])
-    # Optional sign flips applied symmetrically to obs/actions (length must match joints)
-    joint_signs: list[int] = field(default_factory=lambda: [-1, 1, 1, -1, 1, -1])
-    # Allow teleop joints (e.g., SO101) to reference Piper joints directly by name
-    joint_aliases: dict[str, str] = field(
-        default_factory=lambda: {
-            "shoulder_pan": "joint_1",
-            "shoulder_lift": "joint_2",
-            "elbow_flex": "joint_3",
-            "wrist_flex": "joint_5",
-            "wrist_roll": "joint_6",
-        }
-    )
-    # Expose gripper as "gripper.pos" in mm if True
-    include_gripper: bool = False
-    # Optional cameras; leave empty when not used
+    # "teleop": CAN hardware handles master-slave sync, send_action is no-op
+    # "user": script directly controls the arm via EndPoseCtrl
+    control_mode: str = "teleop"
+    # Include gripper in observation and action (7th dimension)
+    include_gripper: bool = True
+    # Gripper effort sent to SDK (LoRA-SP uses 100)
+    gripper_effort: int = 100
+    # Camera configs — OpenCV (index 기반) 또는 RealSense (시리얼 번호 기반) 중 선택
+    # RealSense 예시:
+    #   "top": RealSenseCameraConfig(serial_number_or_name="123456789", fps=30, width=640, height=480)
     cameras: dict[str, CameraConfig] = field(
         default_factory=lambda: {
+            "top": OpenCVCameraConfig(
+                index_or_path=0, width=640, height=480, fps=30, fourcc="MJPG"
+            ),
             "wrist": OpenCVCameraConfig(
-                index_or_path=4, 
-                width=640, 
-                height=480, 
-                fps=30, 
-                fourcc="MJPG"
-            )
+                index_or_path=4, width=640, height=480, fps=30, fourcc="MJPG"
+            ),
         }
     )
-    # When False, expose normalized [-100,100] joint percents; when True, degrees/mm
-    use_degrees: bool = True
-    # Timeout in seconds to wait for SDK EnablePiper during connect
     enable_timeout: float = 5.0

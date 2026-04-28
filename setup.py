@@ -23,6 +23,11 @@ setup(
         "python-can",
         "piper_sdk",
     ],
+    entry_points={
+        "console_scripts": [
+            "piper-inference=lerobot_robot_piper.piper_real_time_inference:main",
+        ],
+    },
     python_requires=">=3.10",
     classifiers=[
         "Programming Language :: Python :: 3",
