@@ -35,9 +35,9 @@ Piper-to-Piper 마스터-슬레이브 텔레오퍼레이션으로 [LeRobotDatase
 
 **이유:** π0는 end-effector 기반 액션을 예측하는 VLA 모델입니다 ([arXiv 2410.24164](https://arxiv.org/abs/2410.24164)). 관절 각도로 데이터셋을 녹화하면 정책의 출력 공간과 불일치가 발생합니다.
 
-LoRA-SP는 π0를 Piper arm에 fine-tuning할 때 **절대 EEF 좌표 (absolute)** 를 액션 공간으로 채택했습니다. π0 원논문의 delta(변화량) 방식과 달리 절대 좌표를 쓴 이유는 두 가지입니다:
+π0는 기본적으로 **절대 EEF 좌표 (absolute action)** 를 예측합니다 ([LeRobot π0 문서](https://huggingface.co/docs/lerobot/pi0)). LoRA-SP도 이 기본값을 그대로 따랐고, 이 프로젝트도 동일합니다. Piper에 absolute를 쓰는 추가적인 이유는 다음과 같습니다:
 1. Piper SDK의 `EndPoseCtrl`이 절대 좌표를 받는 API이므로 변환 없이 그대로 전달 가능
-2. delta 방식은 매 스텝마다 현재 위치를 읽어 더해야 해서 누적 오차 발생 가능
+2. relative 방식은 매 스텝마다 현재 위치를 읽어 더해야 해서 누적 오차 발생 가능
 
 이 설계를 그대로 따라 **녹화 → 학습 → 추론 전 구간이 동일한 절대 EEF 좌표 단위**를 사용합니다.
 
