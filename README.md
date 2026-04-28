@@ -2,7 +2,7 @@
 
 Piper-to-Piper 마스터-슬레이브 텔레오퍼레이션으로 [LeRobotDataset](https://github.com/huggingface/lerobot)을 녹화하고, 학습된 VLA 정책을 실시간으로 추론하는 파이프라인.
 
-원본 [`AgRoboticsResearch/lerobot_robot_piper`](https://github.com/AgRoboticsResearch/lerobot_robot_piper)를 기반으로 KAIST LoRA-SP의 엔드이펙터 설계를 통합하여 발전시켰습니다.
+원본 [`AgRoboticsResearch/lerobot_robot_piper`](https://github.com/AgRoboticsResearch/lerobot_robot_piper)를 기반으로  LoRA-SP의 엔드이펙터 설계를 통합하여 발전시켰습니다.
 
 ---
 

@@ -7,7 +7,7 @@
 | 소스 | 위치 | 역할 |
 |------|------|------|
 | `lerobot_robot_piper` (agilexrobotics) | `c:/UGRP/repos/lerobot_robot_piper` | 원본 LeRobot 플러그인 — 패키지 뼈대 제공 |
-| `LoRA-SP` (KAIST) | `c:/UGRP/repos/LoRA-SP` | 연구 코드베이스 — 엔드이펙터 설계 및 추론 패턴 제공 |
+| `LoRA-SP` (SNU ISLab · SKKU, ICRA 2026) | `c:/UGRP/repos/LoRA-SP` | 연구 코드베이스 — 엔드이펙터 설계 및 추론 패턴 제공 |
 
 ---
 
