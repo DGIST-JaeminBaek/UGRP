@@ -29,14 +29,24 @@ Piper-to-Piper 마스터-슬레이브 텔레오퍼레이션으로 [LeRobotDatase
 
 ## 이 레포가 원본과 다른 점
 
+### 핵심 변경: 관절 공간 → 엔드이펙터 공간
+
 원본은 관절 각도(joint space) 기반이었지만, 이 버전은 **엔드이펙터 좌표(end-effector space)** 로 전면 교체했습니다.
 
-| 항목 | 원본 | 이 버전 |
-|------|------|---------|
-| 액션 공간 | 관절 각도 (deg) | EEF 좌표 (raw SDK 정수) |
-| 텔레오퍼레이터 | SO101 리더 arm | `PiperSlaveOnly` (CAN 패스스루) |
-| 추론 스크립트 | 없음 | `piper_real_time_inference.py` |
-| 제어 모드 | 없음 | `control_mode` (`teleop` / `user`) |
+**이유:** π0는 VLA 모델로, 학습 시 end-effector 좌표를 액션으로 예측합니다. 관절 각도로 데이터셋을 녹화하면 정책의 출력 공간과 불일치가 발생합니다. LoRA-SP가 π0를 Piper arm에 fine-tuning할 때 end-effector 좌표를 액션 공간으로 채택한 것도 같은 이유입니다. 이 설계를 그대로 따라 **녹화 → 학습 → 추론 전 구간이 동일한 EEF 좌표 단위**를 사용합니다.
+
+```
+녹화: get_end_pose_raw() → raw SDK 정수 저장
+학습: π0가 EEF 좌표 분포 학습
+추론: π0 출력 → 역정규화 → EndPoseCtrl() 로 그대로 전달
+```
+
+| 항목 | 원본 | 이 버전 | 변경 이유 |
+|------|------|---------|----------|
+| 액션 공간 | 관절 각도 (deg) | EEF 좌표 (raw SDK 정수) | π0 출력 공간과 일치 |
+| 텔레오퍼레이터 | SO101 리더 arm | `PiperSlaveOnly` (CAN 패스스루) | Piper-to-Piper CAN sync 활용 |
+| 추론 스크립트 | 없음 | `piper_real_time_inference.py` | LoRA-SP 추론 루프 포팅 |
+| 제어 모드 | 없음 | `control_mode` (`teleop` / `user`) | 녹화/추론 간 send_action 동작 구분 |
 
 코드 출처 및 설계 결정 상세 → [LINEAGE.md](LINEAGE.md)
 
