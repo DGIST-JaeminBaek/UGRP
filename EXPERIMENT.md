@@ -241,7 +241,10 @@ for idx in range(8):
 ```
 
 **확인:** `top` / `wrist` 카메라가 실제로 어느 인덱스에 있는지 파악.
-기본값(`top=0`, `wrist=4`)과 다르면 `PiperConfig(cameras={...})`에서 수정 필요.
+확인된 인덱스를 CLI 인자로 전달:
+```bash
+--robot.top_index=<top 인덱스> --robot.wrist_index=<wrist 인덱스>
+```
 
 ---
 
@@ -275,6 +278,37 @@ python -c "
 obs = robot.get_observation()
 assert robot._last_obs is obs, '_last_obs 캐시 실패'
 "
+```
+
+### 2-3. RealSense 시리얼 번호 확인
+
+카메라를 USB로 연결한 상태에서 아래 스크립트 실행:
+
+```python
+import pyrealsense2 as rs
+
+ctx = rs.context()
+devices = list(ctx.devices)
+
+if not devices:
+    print("RealSense 장치 없음 — USB 연결 확인")
+else:
+    for i, d in enumerate(devices):
+        name   = d.get_info(rs.camera_info.name)
+        serial = d.get_info(rs.camera_info.serial_number)
+        print(f"[{i}] {name}  시리얼: {serial}")
+```
+
+**출력 예시:**
+```
+[0] Intel RealSense D435  시리얼: 123456789
+[1] Intel RealSense D435  시리얼: 987654321
+```
+
+**확인:** 카메라가 두 개 잡히면 어느 쪽이 top/wrist인지 USB를 하나씩 뽑아서 구분.
+확인된 시리얼 번호를 CLI 인자로 전달:
+```bash
+--robot.top_serial=123456789 --robot.wrist_serial=987654321
 ```
 
 ---

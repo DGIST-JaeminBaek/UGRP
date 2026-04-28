@@ -26,12 +26,28 @@ Piper-to-Piper 마스터-슬레이브 텔레오퍼레이션을 LeRobotDataset으
 - [x] `__init__` — 연결 시 `EmergencyStop` 및 `MotionCtrl_2` 강제 호출 제거
 - [x] 카메라 두 개 지원: `top` / `wrist` — OpenCV(인덱스) 또는 RealSense(시리얼 번호) 선택 가능
 
-**사용법:**
+**사용법 (RealSense):**
 ```bash
 lerobot-record \
     --robot.type=piper \
     --robot.control_mode=teleop \
     --robot.can_interface=can0 \
+    --robot.top_serial=123456789 \
+    --robot.wrist_serial=987654321 \
+    --teleop.type=piper_slave_only \
+    --dataset.repo_id=local/piper-demo \
+    --dataset.single_task="pick and place" \
+    --dataset.push_to_hub=false
+```
+
+**사용법 (OpenCV):**
+```bash
+lerobot-record \
+    --robot.type=piper \
+    --robot.control_mode=teleop \
+    --robot.can_interface=can0 \
+    --robot.top_index=0 \
+    --robot.wrist_index=4 \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
     --dataset.single_task="pick and place" \

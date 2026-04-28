@@ -72,11 +72,28 @@ pip install -e .
 
 master arm을 손으로 움직이면 slave arm이 CAN으로 자동 추종. LeRobot이 slave arm 상태를 데이터셋으로 저장합니다.
 
+**RealSense 카메라:**
 ```bash
 lerobot-record \
     --robot.type=piper \
     --robot.control_mode=teleop \
     --robot.can_interface=can0 \
+    --robot.top_serial=123456789 \
+    --robot.wrist_serial=987654321 \
+    --teleop.type=piper_slave_only \
+    --dataset.repo_id=local/piper-demo \
+    --dataset.single_task="pick and place" \
+    --dataset.push_to_hub=false
+```
+
+**OpenCV 카메라:**
+```bash
+lerobot-record \
+    --robot.type=piper \
+    --robot.control_mode=teleop \
+    --robot.can_interface=can0 \
+    --robot.top_index=0 \
+    --robot.wrist_index=4 \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
     --dataset.single_task="pick and place" \

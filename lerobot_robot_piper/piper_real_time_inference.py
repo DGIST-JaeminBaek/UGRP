@@ -15,8 +15,6 @@ from typing import Any
 
 import torch
 
-from lerobot.cameras.opencv import OpenCVCameraConfig
-from lerobot.cameras.realsense import RealSenseCameraConfig
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
 from lerobot.policies.factory import make_policy, make_pre_post_processors
@@ -29,34 +27,6 @@ logger = logging.getLogger(__name__)
 
 TARGET_FPS = 5
 SLEEP_TIME = 1.0 / TARGET_FPS
-
-
-def build_camera_configs(args: argparse.Namespace) -> dict:
-    """RealSense 시리얼 번호가 주어지면 RealSense, 아니면 OpenCV 카메라 사용."""
-    if args.top_serial or args.wrist_serial:
-        if not args.top_serial or not args.wrist_serial:
-            raise ValueError("--top_serial 과 --wrist_serial 을 둘 다 지정해야 합니다.")
-        logger.info("카메라: RealSense (top=%s, wrist=%s)", args.top_serial, args.wrist_serial)
-        return {
-            "top": RealSenseCameraConfig(
-                serial_number_or_name=args.top_serial,
-                fps=30, width=640, height=480,
-            ),
-            "wrist": RealSenseCameraConfig(
-                serial_number_or_name=args.wrist_serial,
-                fps=30, width=640, height=480,
-            ),
-        }
-    else:
-        logger.info("카메라: OpenCV (top=index 0, wrist=index 4)")
-        return {
-            "top": OpenCVCameraConfig(
-                index_or_path=0, width=640, height=480, fps=30, fourcc="MJPG"
-            ),
-            "wrist": OpenCVCameraConfig(
-                index_or_path=4, width=640, height=480, fps=30, fourcc="MJPG"
-            ),
-        }
 
 
 def create_batch(robot: Piper, task: str) -> dict[str, Any]:
@@ -103,7 +73,10 @@ def main(args: argparse.Namespace) -> None:
         robot_config = PiperConfig(
             can_interface=args.can_interface,
             control_mode="user",
-            cameras=build_camera_configs(args),
+            top_serial=args.top_serial,
+            wrist_serial=args.wrist_serial,
+            top_index=args.top_index,
+            wrist_index=args.wrist_index,
         )
         robot = Piper(robot_config)
         robot.connect(calibrate=False)
@@ -198,11 +171,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"])
     parser.add_argument("--max_steps", type=int, default=1000)
     parser.add_argument("--task", type=str, default="pick and place")
-    # RealSense 카메라 시리얼 번호 (미지정 시 OpenCV 인덱스 기반으로 폴백)
+    # RealSense 시리얼 번호 — 둘 다 지정하면 RealSense 사용, 미지정 시 OpenCV 인덱스 사용
     parser.add_argument("--top_serial", type=str, default=None,
-                        help="top 카메라 RealSense 시리얼 번호 (예: 123456789)")
+                        help="top 카메라 RealSense 시리얼 번호")
     parser.add_argument("--wrist_serial", type=str, default=None,
-                        help="wrist 카메라 RealSense 시리얼 번호 (예: 987654321)")
+                        help="wrist 카메라 RealSense 시리얼 번호")
+    # OpenCV 인덱스 — RealSense 미사용 시 적용
+    parser.add_argument("--top_index", type=int, default=0,
+                        help="top 카메라 OpenCV 인덱스 (기본값: 0)")
+    parser.add_argument("--wrist_index", type=int, default=4,
+                        help="wrist 카메라 OpenCV 인덱스 (기본값: 4)")
     return parser.parse_args()
 
 
