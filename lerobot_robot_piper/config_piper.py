@@ -27,10 +27,16 @@ class PiperConfig(RobotConfig):
     top_serial: Optional[str] = None
     wrist_serial: Optional[str] = None
 
+    # Set False to disable all cameras (EEF-only recording/inference)
+    use_cameras: bool = True
+
     # Built automatically in __post_init__ — do not set manually.
     cameras: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self):
+        if not self.use_cameras:
+            self.cameras = {}
+            return
         if self.top_serial or self.wrist_serial:
             if not self.top_serial or not self.wrist_serial:
                 raise ValueError("top_serial 과 wrist_serial 을 둘 다 지정해야 합니다.")

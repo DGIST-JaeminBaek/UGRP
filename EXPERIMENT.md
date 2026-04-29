@@ -447,21 +447,54 @@ piper-inference \
 
 ---
 
+## 실험 노트 (2026-04-29)
+
+### 환경
+- conda 환경: `piper`
+- lerobot 0.4.0, piper_sdk OK, torch 2.7.1+cu126
+- 카메라 없음, 마스터 암 없음, 슬레이브 암 단독 테스트
+
+### 발견 사항
+
+**1-1:** CAN 첫 프레임 도착 전 `get_status_deg()` 첫 호출이 전부 0 반환 — 위험 A 재확인.
+0.5초 대기 후 정상값 수신됨.
+
+**1-3 (zero_configuration):**
+- `skip_enable=False`로 `EnablePiper()` 호출 시 서보 on (관절에 힘 들어감).
+- arm이 `CAN_CTRL` 모드였으나 SDK `JointCtrl` 명령도 CAN으로 전달되어 정상 동작.
+- 마스터 암 없이 단독 테스트 시 `skip_enable=True` 권장 (불필요한 서보 on 방지).
+- `DisablePiper()` → `DisableArm(7)` 호출로 서보 해제 확인.
+
+**lerobot-record 플러그인 등록:**
+- `--robot.type=piper` 단독 사용 시 `invalid choice` 오류.
+- `--robot.discover_packages_path=lerobot_robot_piper` 추가 필요 (teleop도 동일).
+- `register_third_party_devices()`는 `main()` 안에서 호출되어 draccus 파싱 후 실행되므로 효과 없음.
+- `parser.wrap()`의 `load_plugin()` 메커니즘을 통해 파싱 전 로드해야 함.
+
+**3-2 (녹화):**
+- `use_cameras=false` 옵션으로 카메라 없이 EEF만 녹화 가능 (오늘 추가).
+- 에피소드 데이터가 단일 parquet 파일에 저장됨 (`episode_index` 컬럼으로 구분).
+- → 키로 에피소드 조기 종료, ← 키로 재녹화, ESC로 전체 종료.
+- 키 안내 메시지는 LeRobot 기본 동작에서도 출력 안 됨.
+
+---
+
 ## 체크리스트 요약
 
 | 레벨 | 항목 | 하드웨어 | 안전 위험도 | 완료 |
 |------|------|:---:|:---:|:---:|
-| 0-1 | 패키지 임포트 | ✗ | 없음 | [ ] |
-| 0-2 | 플러그인 탐색 | ✗ | 없음 | [ ] |
-| 0-3 | Config 기본값 | ✗ | 없음 | [ ] |
+| 0-1 | 패키지 임포트 | ✗ | 없음 | [x] |
+| 0-2 | 플러그인 탐색 | ✗ | 없음 | [x] |
+| 0-3 | Config 기본값 | ✗ | 없음 | [x] |
 | 0-4 | 추론 시뮬레이션 (action 값 점검) | ✗ | 없음 | [ ] |
-| 1-1 | SDK 연결 + EEF non-zero 확인 | CAN | 낮음 | [ ] |
-| 1-2 | teleop EnablePiper 건너뜀 | CAN | 낮음 | [ ] |
-| 1-3 | zero_configuration | CAN + arm | **높음** | [ ] |
-| 1-4 | EEF 연속 읽기 | CAN + arm | 낮음 | [ ] |
+| 1-1 | SDK 연결 + EEF non-zero 확인 | CAN | 낮음 | [x] |
+| 1-2 | teleop EnablePiper 건너뜀 | CAN | 낮음 | [x] |
+| 1-3 | zero_configuration | CAN + arm | **높음** | [x] |
+| 1-4 | EEF 연속 읽기 | CAN + arm | 낮음 | [x] |
 | 2-1 | 카메라 인덱스 확인 | 카메라 | 없음 | [ ] |
 | 2-2 | Piper + 카메라 + EEF 검증 | CAN + arm + 카메라 | 낮음 | [ ] |
-| 3-1 | send_action no-op + 캐시 검증 | CAN + arm | 낮음 | [ ] |
-| 3-2 | 실제 녹화 | 풀 셋업 | **중간** | [ ] |
+| 2-3 | RealSense 시리얼 번호 확인 | 카메라 | 없음 | [ ] |
+| 3-1 | send_action no-op + 캐시 검증 | CAN + arm | 낮음 | [x] |
+| 3-2 | 실제 녹화 | CAN + arm (카메라 없음) | **중간** | [x] |
 | 4-1 | 추론 시뮬레이션 재확인 | ✗ | 없음 | [ ] |
 | 4-2 | 실제 추론 (5 스텝→50 스텝) | 풀 셋업 + 체크포인트 | **높음** | [ ] |
