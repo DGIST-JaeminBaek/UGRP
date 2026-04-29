@@ -25,7 +25,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "piper-inference=lerobot_robot_piper.piper_real_time_inference:main",
+            "piper-inference=lerobot_robot_piper.piper_real_time_inference:cli_main",
         ],
     },
     python_requires=">=3.10",

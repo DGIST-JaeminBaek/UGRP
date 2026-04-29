@@ -55,7 +55,7 @@ def main(args: argparse.Namespace) -> None:
     policy_cfg.pretrained_path = args.pretrained_path
     policy_cfg.device = str(device)
 
-    ds_meta = LeRobotDatasetMetadata(args.dataset_repo_id)
+    ds_meta = LeRobotDatasetMetadata(args.dataset_repo_id, root=args.dataset_root)
     policy = make_policy(cfg=policy_cfg, ds_meta=ds_meta)
     policy.eval()
 
@@ -165,6 +165,8 @@ def parse_args() -> argparse.Namespace:
                         help="학습된 LeRobot 정책 체크포인트 경로")
     parser.add_argument("--dataset_repo_id", type=str, default="local/piper-demo",
                         help="LeRobot 데이터셋 repo ID (정규화 통계용)")
+    parser.add_argument("--dataset_root", type=str, default=None,
+                        help="데이터셋 로컬 경로 (기본값: HuggingFace 캐시)")
     parser.add_argument("--use_devices", type=lambda x: x.lower() in ("true", "1", "yes"),
                         default=True, help="실제 하드웨어 연결 여부 (false = 시뮬레이션)")
     parser.add_argument("--can_interface", type=str, default="can0")
@@ -184,6 +186,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def cli_main():
+    main(parse_args())
+
+
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    cli_main()
