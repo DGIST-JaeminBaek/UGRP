@@ -43,10 +43,10 @@ class PiperConfig(RobotConfig):
             from lerobot.cameras.realsense import RealSenseCameraConfig
             self.cameras = {
                 "top": RealSenseCameraConfig(
-                    serial_number_or_name=self.top_serial, fps=30, width=640, height=480
+                    serial_number_or_name=self.top_serial, fps=30, width=640, height=480, warmup_s=5
                 ),
                 "wrist": RealSenseCameraConfig(
-                    serial_number_or_name=self.wrist_serial, fps=30, width=640, height=480
+                    serial_number_or_name=self.wrist_serial, fps=30, width=640, height=480, warmup_s=5
                 ),
             }
         else:

@@ -107,7 +107,3 @@ piper-inference \
 
 ## 미해결 사항 / 향후 과제
 
-- [ ] 시간적 앙상블(temporal ensemble) 미구현 — LoRA-SP는 슬라이딩 윈도우 버퍼로 더 부드러운 액션 생성
-- [ ] 추론 스크립트의 카메라 키 이름(`top`, `wrist`)이 하드코딩됨 — 데이터셋 메타데이터 기반으로 개선 필요
-- [ ] `robot_utils.py`가 V1 SDK(`C_PiperInterface`)를 여전히 사용 — 호환성을 위해 유지하나 메인 파이프라인에서는 미사용
-- [ ] LeRobot의 `async_inference` 서버/클라이언트 미연동

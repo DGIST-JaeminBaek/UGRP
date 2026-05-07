@@ -74,9 +74,63 @@ pip install -e .
 
 ## 사용법
 
+### 플러그인 등록 인자 (`--discover_packages_path`)
+
+`lerobot-record` / `lerobot-train` 실행 시 `--robot.type=piper`를 인식시키려면 아래 인자가 **항상** 필요합니다:
+
+```
+--robot.discover_packages_path=lerobot_robot_piper
+--teleop.discover_packages_path=lerobot_robot_piper
+```
+
+> **왜 필요한가?**
+> `pip install -e .`로 설치하면 lerobot이 entry point를 통해 자동으로 플러그인을 찾아야 하지만,
+> lerobot 내부의 `register_third_party_devices()`가 draccus 인자 파싱 **이후**에 호출되는 구조라
+> `--robot.type=piper`를 파싱하는 시점에는 piper가 아직 등록되지 않아 `invalid choice` 에러가 발생합니다.
+> `--discover_packages_path`는 파싱 전에 패키지를 강제 로드하는 workaround입니다.
+
+---
+
+### 카메라 시리얼 번호 확인
+
+RealSense 카메라를 USB에 연결한 상태에서:
+
+```bash
+python -c "
+import pyrealsense2 as rs
+ctx = rs.context()
+for i, d in enumerate(ctx.devices):
+    print(f'[{i}] {d.get_info(rs.camera_info.name)}  시리얼: {d.get_info(rs.camera_info.serial_number)}')
+"
+```
+
+카메라가 여러 개일 경우 USB를 하나씩 뽑아 top/wrist를 구분합니다.
+
+> **현재 실험실 세팅:**
+> - top 카메라: `327122074262` (Intel RealSense D435IF)
+> - wrist 카메라: `243322071626` (Intel RealSense D435IF)
+>
+> 아래 명령어 예시의 `123456789` / `987654321` 자리에 위 시리얼 번호를 넣으면 됩니다.
+
+---
+
+### 데이터 저장 위치
+
+기본 저장 경로는 `~/.cache/huggingface/lerobot/<repo_id>/`입니다. 컴퓨터를 꺼도 유지되며, `rm -rf`하지 않는 한 삭제되지 않습니다.
+
+원하는 경로에 저장하려면 `--dataset.root`를 지정합니다:
+
+```bash
+--dataset.root=/home/ugrp308/Group43/datasets/piper-demo
+```
+
+---
+
 ### 녹화
 
 master arm을 손으로 움직이면 slave arm이 CAN으로 자동 추종. LeRobot이 slave arm 상태를 데이터셋으로 저장합니다.
+
+이미지는 프레임별 배열이 아니라 **mp4 비디오**로 압축 저장되며, parquet 파일에는 EEF state/action 및 타임스탬프/프레임 인덱스만 저장됩니다. 학습 시 lerobot이 `frame_index`를 이용해 mp4에서 해당 프레임을 디코딩하여 배치를 구성합니다.
 
 **RealSense 카메라:**
 ```bash
@@ -89,7 +143,10 @@ lerobot-record \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
     --dataset.single_task="pick and place" \
-    --dataset.push_to_hub=false
+    --dataset.num_episodes=10 \
+    --dataset.push_to_hub=false \
+    --robot.discover_packages_path=lerobot_robot_piper \
+    --teleop.discover_packages_path=lerobot_robot_piper
 ```
 
 **OpenCV 카메라:**
@@ -103,8 +160,14 @@ lerobot-record \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
     --dataset.single_task="pick and place" \
-    --dataset.push_to_hub=false
+    --dataset.num_episodes=10 \
+    --dataset.push_to_hub=false \
+    --robot.discover_packages_path=lerobot_robot_piper \
+    --teleop.discover_packages_path=lerobot_robot_piper
 ```
+
+> `--dataset.num_episodes`: 녹화할 에피소드 수. 지정하지 않으면 ESC로 수동 종료할 때까지 계속 녹화합니다.
+> 에피소드 중 `→` 키로 조기 종료, `←` 키로 재녹화, ESC로 전체 종료.
 
 ### 학습
 
@@ -115,16 +178,11 @@ lerobot-train \
     --output_dir=outputs/piper-pi0
 ```
 
-### 추론
+### 추론 (동기, sync)
 
-**OpenCV 카메라:**
-```bash
-piper-inference \
-    --pretrained_path=outputs/piper-pi0/checkpoints/last/pretrained_model \
-    --dataset_repo_id=local/piper-demo \
-    --can_interface=can0 \
-    --task="pick and place"
-```
+추론과 로봇 제어를 한 프로세스에서 순차 실행. 추론 중 로봇이 대기합니다.
+
+`--temporal_ensemble` 플래그를 추가하면 action chunk를 지수 가중 평균으로 집계해 더 부드러운 동작을 생성합니다 (LoRA-SP 방식). 기본값은 off입니다.
 
 **RealSense 카메라:**
 ```bash
@@ -136,6 +194,45 @@ piper-inference \
     --top_serial=123456789 \
     --wrist_serial=987654321
 ```
+
+**OpenCV 카메라:**
+```bash
+piper-inference \
+    --pretrained_path=outputs/piper-pi0/checkpoints/last/pretrained_model \
+    --dataset_repo_id=local/piper-demo \
+    --can_interface=can0 \
+    --task="pick and place"
+```
+
+### 추론 (비동기, async)
+
+추론 서버와 로봇 클라이언트를 분리해 추론 중에도 로봇이 계속 동작합니다.
+외부 GPU 서버에 PolicyServer를 띄우고 로봇 PC에서 클라이언트를 실행하는 구조입니다.
+
+> lerobot async 의존성 설치 필요:
+> ```bash
+> cd /path/to/lerobot && pip install -e ".[async]"
+> ```
+
+**GPU 서버:**
+```bash
+python -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080
+```
+
+**로봇 PC:**
+```bash
+piper-async-client \
+    --robot.type=piper \
+    --robot.can_interface=can0 \
+    --robot.top_serial=123456789 \
+    --robot.wrist_serial=987654321 \
+    --server_address=<GPU서버_IP>:8080 \
+    --policy_type=pi0 \
+    --pretrained_name_or_path=outputs/piper-pi0/checkpoints/last/pretrained_model \
+    --task="pick and place"
+```
+
+> 두 PC가 같은 네트워크에 있어야 하고, 방화벽에서 8080 포트가 열려 있어야 합니다.
 
 ---
 

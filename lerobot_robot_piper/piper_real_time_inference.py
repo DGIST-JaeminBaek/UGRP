@@ -29,6 +29,23 @@ TARGET_FPS = 5
 SLEEP_TIME = 1.0 / TARGET_FPS
 
 
+def _ensemble_load_buffer(buffer: list, action_chunk: torch.Tensor) -> list:
+    """action_chunk의 각 스텝을 버퍼 슬롯에 추가."""
+    for i, slot in enumerate(buffer):
+        slot.append(action_chunk[i])
+    return buffer
+
+
+def _ensemble_pop_action(buffer: list, m: float = 1.0) -> tuple[list, torch.Tensor]:
+    """버퍼 맨 앞 슬롯을 지수 가중 평균으로 집계해 현재 action 반환."""
+    slot = buffer.pop(0)
+    stack = torch.stack(slot, dim=0)
+    weights = torch.exp(-m * torch.arange(stack.shape[0], dtype=torch.float32).to(stack.device))
+    action = (stack * weights[:, None]).sum(dim=0) / weights.sum()
+    buffer.append([])
+    return buffer, action
+
+
 def create_batch(robot: Piper, task: str) -> dict[str, Any]:
     """로봇 상태와 카메라에서 정책 입력 배치를 생성."""
     obs = robot.get_observation()
@@ -55,8 +72,15 @@ def main(args: argparse.Namespace) -> None:
     policy_cfg.pretrained_path = args.pretrained_path
     policy_cfg.device = str(device)
 
+    if args.bf16:
+        policy_cfg.dtype = "bfloat16"
+        policy_cfg.device = "cpu"
+        logger.info("Loading policy on CPU in bfloat16, then moving to GPU")
     ds_meta = LeRobotDatasetMetadata(args.dataset_repo_id, root=args.dataset_root)
     policy = make_policy(cfg=policy_cfg, ds_meta=ds_meta)
+    if args.bf16:
+        policy = policy.to(device)
+        logger.info("Policy moved to %s", device)
     policy.eval()
 
     preprocessor, postprocessor = make_pre_post_processors(
@@ -86,9 +110,12 @@ def main(args: argparse.Namespace) -> None:
         logger.warning("Simulation mode (--use_devices false)")
 
     # ── 3. Inference loop ────────────────────────────────────────────────────
-    logger.info("Starting inference loop (%dHz, max %d steps)...", TARGET_FPS, args.max_steps)
+    n_action_steps = policy_cfg.n_action_steps
+    logger.info("Starting inference loop (%dHz, max %d steps, temporal_ensemble=%s)...",
+                TARGET_FPS, args.max_steps, args.temporal_ensemble)
     step = 0
     total_inference_time = 0.0
+    ensemble_buffer: list = [[] for _ in range(n_action_steps)] if args.temporal_ensemble else []
 
     try:
         while step < args.max_steps:
@@ -97,25 +124,26 @@ def main(args: argparse.Namespace) -> None:
             if robot is not None:
                 batch = create_batch(robot, task=args.task)
             else:
-                batch = {
-                    "observation.state": torch.randn(1, 7),
-                    "observation.images.top": torch.randint(
-                        0, 256, (1, 480, 640, 3), dtype=torch.uint8
-                    ),
-                    "observation.images.wrist": torch.randint(
-                        0, 256, (1, 480, 640, 3), dtype=torch.uint8
-                    ),
-                    "task": [args.task],
-                }
+                cam_keys = [k.removeprefix("observation.images.") for k in ds_meta.features if k.startswith("observation.images.")]
+                batch = {"observation.state": torch.randn(1, 7), "task": [args.task]}
+                for cam_key in cam_keys:
+                    batch[f"observation.images.{cam_key}"] = torch.randint(0, 256, (1, 480, 640, 3), dtype=torch.uint8)
 
             t1 = time.perf_counter()
             batch = preprocessor(batch)
             t2 = time.perf_counter()
 
             with torch.no_grad():
-                action = policy.select_action(batch).squeeze()
+                action_chunk = policy.select_action(batch)  # (n_action_steps, action_dim)
 
             t3 = time.perf_counter()
+
+            if args.temporal_ensemble:
+                ensemble_buffer = _ensemble_load_buffer(ensemble_buffer, action_chunk.squeeze(0))
+                ensemble_buffer, action = _ensemble_pop_action(ensemble_buffer)
+            else:
+                action = action_chunk.squeeze()
+
             action = postprocessor(action.unsqueeze(0)).squeeze()
 
             if robot is not None:
@@ -183,6 +211,10 @@ def parse_args() -> argparse.Namespace:
                         help="top 카메라 OpenCV 인덱스 (기본값: 0)")
     parser.add_argument("--wrist_index", type=int, default=4,
                         help="wrist 카메라 OpenCV 인덱스 (기본값: 4)")
+    parser.add_argument("--temporal_ensemble", action="store_true", default=False,
+                        help="시간적 앙상블 활성화 — action chunk를 지수 가중 평균으로 집계해 부드러운 동작 생성")
+    parser.add_argument("--bf16", action="store_true", default=False,
+                        help="모델을 bfloat16으로 캐스트 — GPU 메모리 절반으로 줄임 (4070ti 등 저사양 GPU용)")
     return parser.parse_args()
 
 

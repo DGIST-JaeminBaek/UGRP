@@ -447,6 +447,93 @@ piper-inference \
 
 ---
 
+## 레벨 5 — 비동기 추론 (외부 GPU 서버 분리)
+
+> 사전 조건: 레벨 4-2 통과 + 외부 GPU 서버와 네트워크 연결 확인
+
+### 5-1. async 의존성 설치
+
+```bash
+cd /home/ugrp308/Group43/lerobot && pip install -e ".[async]"
+```
+
+---
+
+### 5-2. PolicyServer 기동 (GPU 서버)
+
+```bash
+python -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080
+```
+
+**확인:** 서버가 8080 포트에서 대기 중인지 로그로 확인.
+방화벽에서 8080 포트 열려 있어야 함.
+
+---
+
+### 5-3. 비동기 추론 시뮬레이션 (로봇 PC, 하드웨어 없이)
+
+> 실제 arm 연결 전 네트워크 연결 및 action 값 사전 점검
+
+```bash
+piper-async-client \
+    --robot.type=piper \
+    --robot.can_interface=can0 \
+    --robot.top_serial=327122074262 \
+    --robot.wrist_serial=243322071626 \
+    --server_address=<GPU서버_IP>:8080 \
+    --policy_type=pi0 \
+    --pretrained_name_or_path=outputs/piper-pi0/checkpoints/last/pretrained_model \
+    --task="test task" \
+    --actions_per_chunk=50 \
+    --chunk_size_threshold=0.5 \
+    --debug_visualize_queue_size=True
+```
+
+**확인:**
+- 서버와 연결되는지 확인
+- action 값이 위험 B 정상 범위 이내인지 확인
+- `debug_visualize_queue_size`로 버퍼 상태 모니터링
+
+---
+
+### 5-4. 파라미터 튜닝 가이드
+
+네트워크 지연이 있어도 로봇이 끊기지 않으려면 버퍼가 소진되기 전에 다음 chunk가 도착해야 함.
+
+| 파라미터 | 설명 | 권장 시작값 |
+|---|---|---|
+| `actions_per_chunk` | 한 번에 받을 action 스텝 수. 크게 잡을수록 지연에 강하지만 반응성 감소 | 50 |
+| `chunk_size_threshold` | 버퍼가 몇 % 남았을 때 다음 chunk 요청. 작으면 버퍼 소진 위험 | 0.5 |
+
+**튜닝 순서:**
+1. `--debug_visualize_queue_size=True`로 버퍼 크기 실시간 모니터링
+2. 버퍼가 자주 0에 가까워지면 `actions_per_chunk` 증가 또는 `chunk_size_threshold` 증가
+3. 버퍼가 항상 가득 차 있으면 `actions_per_chunk` 감소로 반응성 개선
+
+---
+
+### 5-5. 실제 arm 비동기 추론
+
+> ⚠️ 레벨 4-2와 동일한 안전 수칙 적용. 5-3 시뮬레이션 통과 후 진행.
+
+```bash
+piper-async-client \
+    --robot.type=piper \
+    --robot.can_interface=can0 \
+    --robot.top_serial=327122074262 \
+    --robot.wrist_serial=243322071626 \
+    --server_address=<GPU서버_IP>:8080 \
+    --policy_type=pi0 \
+    --pretrained_name_or_path=outputs/piper-pi0/checkpoints/last/pretrained_model \
+    --task="test task" \
+    --actions_per_chunk=50 \
+    --chunk_size_threshold=0.5
+```
+
+**비상시:** Ctrl+C → `sudo ip link set can0 down`
+
+---
+
 ## 실험 노트 (2026-04-29)
 
 ### 환경
@@ -491,10 +578,15 @@ piper-inference \
 | 1-2 | teleop EnablePiper 건너뜀 | CAN | 낮음 | [x] |
 | 1-3 | zero_configuration | CAN + arm | **높음** | [x] |
 | 1-4 | EEF 연속 읽기 | CAN + arm | 낮음 | [x] |
-| 2-1 | 카메라 인덱스 확인 | 카메라 | 없음 | [ ] |
-| 2-2 | Piper + 카메라 + EEF 검증 | CAN + arm + 카메라 | 낮음 | [ ] |
-| 2-3 | RealSense 시리얼 번호 확인 | 카메라 | 없음 | [ ] |
+| 2-1 | 카메라 인덱스 확인 | 카메라 | 없음 | [x] |
+| 2-2 | Piper + 카메라 + EEF 검증 | CAN + arm + 카메라 | 낮음 | [x] |
+| 2-3 | RealSense 시리얼 번호 확인 | 카메라 | 없음 | [x] |
 | 3-1 | send_action no-op + 캐시 검증 | CAN + arm | 낮음 | [x] |
-| 3-2 | 실제 녹화 | CAN + arm (카메라 없음) | **중간** | [x] |
+| 3-2 | 실제 녹화 (카메라 포함) | CAN + arm + 카메라 | **중간** | [x] |
 | 4-1 | 추론 시뮬레이션 재확인 | ✗ | 없음 | [ ] |
 | 4-2 | 실제 추론 (5 스텝→50 스텝) | 풀 셋업 + 체크포인트 | **높음** | [ ] |
+| 5-1 | async 의존성 설치 | ✗ | 없음 | [ ] |
+| 5-2 | PolicyServer 기동 (GPU 서버) | GPU 서버 | 없음 | [ ] |
+| 5-3 | 비동기 추론 시뮬레이션 | 네트워크 | 없음 | [ ] |
+| 5-4 | 파라미터 튜닝 | 네트워크 | 없음 | [ ] |
+| 5-5 | 실제 arm 비동기 추론 | 풀 셋업 + GPU 서버 | **높음** | [ ] |

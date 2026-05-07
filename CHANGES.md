@@ -4,7 +4,43 @@
 
 ---
 
-## [현재] — 2026-04-28
+## [현재] — 2026-05-07
+
+### `lerobot_robot_piper/robot_utils.py` — 삭제
+
+- V1 SDK(`C_PiperInterface`) 기반 유틸리티 파일 삭제
+- `init_robot`, `read_end_pose_msg`, `read_joint_msg`, `set_zero_configuration`, `ctrl_end_pose` 함수 모두 `piper_sdk_interface.py` / `piper.py`에 V2 SDK 기반으로 재구현돼 있어 중복
+- `__init__.py`에서 관련 임포트 및 `__all__` 항목 제거
+
+### `lerobot_robot_piper/config_piper.py` — RealSense warmup_s 설정
+
+- `RealSenseCameraConfig` 생성 시 `warmup_s=5` 추가
+- RealSense 두 카메라 순차 연결 시 두 번째 카메라 첫 프레임 수신 지연 문제 해결
+- lerobot의 표준 해결법 — `warmup_s`를 늘리면 pipeline 시작 후 충분히 기다린 뒤 첫 read를 시도함
+
+### `lerobot_robot_piper/piper_real_time_inference.py` — temporal ensemble 옵션 추가
+
+- `--temporal_ensemble` 플래그 추가 — 기본값 off, 켜면 action chunk를 지수 가중 평균으로 집계
+- `_ensemble_load_buffer()` / `_ensemble_pop_action()` 헬퍼 추가 — LoRA-SP `utils.py` 로직 포팅
+- 기존 추론 방식은 그대로 유지, 플래그로 분기
+
+### `lerobot_robot_piper/piper_async_client.py` — 신규 추가
+
+- LeRobot `async_inference` 서버/클라이언트 구조와 piper 연동
+- `lerobot_robot_piper` 임포트로 piper 플러그인을 draccus 파싱 전에 등록
+- `lerobot.async_inference.constants.SUPPORTED_ROBOTS`에 `"piper"` 패치 — lerobot 수정 없이 우회
+- `setup.py`에 `piper-async-client` CLI 엔트리 포인트 추가
+- 외부 GPU 서버에 PolicyServer 띄우고 로봇 PC에서 클라이언트 실행하는 구조 지원
+
+### RealSense 시리얼 번호 확인 (2026-05-07)
+
+- top 카메라: `327122074262` (Intel RealSense D435IF)
+- wrist 카메라: `243322071626` (Intel RealSense D435IF)
+- 연결 방법: `PiperConfig(top_serial='327122074262', wrist_serial='243322071626')`
+
+---
+
+## [이전] — 2026-04-28
 
 ### `piper_real_time_inference.py` — 전면 재작성
 
