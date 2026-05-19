@@ -4,7 +4,32 @@
 
 ---
 
-## [현재] — 2026-05-07
+## [현재] — 2026-05-19
+
+### `lerobot_robot_piper/smolvla_inference.py` — 신규 추가
+
+- SmolVLA 기반 실시간 추론 스크립트
+- `smolvla-inference` CLI 엔트리포인트 (`setup.py` 추가)
+- action clamp — 녹화 데이터 기반 EEF 범위로 출력 제한 (안전장치)
+- 카메라 warmup 대기 (connect 후 15초) — async_read timeout 방지
+- `--use_devices=false` 시뮬레이션 모드 지원
+
+### `lerobot_robot_piper/config_piper.py` — 단일 카메라 지원
+
+- top/wrist RealSense 시리얼을 각각 독립적으로 지정 가능
+- 기존: 둘 다 지정하지 않으면 에러 → 수정: 하나만 지정해도 동작
+- top만 있거나 wrist만 있는 단일 카메라 구성 지원
+
+### 정책 전환: pi0 → SmolVLA
+
+- `lerobot/pi0` 체크포인트가 lerobot 0.4.0과 버전 불일치로 호환 안 됨
+- `lerobot/smolvla_base` (450M, v0.4.x 호환)로 전환
+- expert 레이어만 학습하는 partial fine-tuning 방식
+- 상세 분석 → [DECISION_PI0_COMPAT.md](DECISION_PI0_COMPAT.md)
+
+---
+
+## [이전] — 2026-05-07
 
 ### `lerobot_robot_piper/robot_utils.py` — 삭제
 
