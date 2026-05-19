@@ -27,6 +27,7 @@ setup(
         "console_scripts": [
             "piper-inference=lerobot_robot_piper.piper_real_time_inference:cli_main",
             "piper-async-client=lerobot_robot_piper.piper_async_client:async_client",
+            "smolvla-inference=lerobot_robot_piper.smolvla_inference:cli_main",
         ],
     },
     python_requires=">=3.10",

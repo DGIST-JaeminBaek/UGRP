@@ -38,17 +38,16 @@ class PiperConfig(RobotConfig):
             self.cameras = {}
             return
         if self.top_serial or self.wrist_serial:
-            if not self.top_serial or not self.wrist_serial:
-                raise ValueError("top_serial 과 wrist_serial 을 둘 다 지정해야 합니다.")
             from lerobot.cameras.realsense import RealSenseCameraConfig
-            self.cameras = {
-                "top": RealSenseCameraConfig(
-                    serial_number_or_name=self.top_serial, fps=30, width=640, height=480, warmup_s=5
-                ),
-                "wrist": RealSenseCameraConfig(
+            self.cameras = {}
+            if self.top_serial:
+                self.cameras["top"] = RealSenseCameraConfig(
+                    serial_number_or_name=self.top_serial, fps=30, width=640, height=480, warmup_s=0
+                )
+            if self.wrist_serial:
+                self.cameras["wrist"] = RealSenseCameraConfig(
                     serial_number_or_name=self.wrist_serial, fps=30, width=640, height=480, warmup_s=5
-                ),
-            }
+                )
         else:
             self.cameras = {
                 "top": OpenCVCameraConfig(
