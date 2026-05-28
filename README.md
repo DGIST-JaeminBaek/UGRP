@@ -138,10 +138,11 @@ lerobot-record \
     --robot.type=piper \
     --robot.control_mode=teleop \
     --robot.can_interface=can0 \
-    --robot.top_serial=123456789 \
-    --robot.wrist_serial=987654321 \
+    --robot.top_serial=327122074262 \
+    --robot.wrist_serial=243322071626 \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
+    --dataset.root=/home/ugrp308/Group43/datasets/piper-demo \
     --dataset.single_task="pick and place" \
     --dataset.num_episodes=10 \
     --dataset.push_to_hub=false \
@@ -159,6 +160,7 @@ lerobot-record \
     --robot.wrist_index=4 \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-demo \
+    --dataset.root=/home/ugrp308/Group43/datasets/piper-demo \
     --dataset.single_task="pick and place" \
     --dataset.num_episodes=10 \
     --dataset.push_to_hub=false \
