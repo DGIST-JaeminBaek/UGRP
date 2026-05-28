@@ -537,6 +537,51 @@ piper-async-client \
 
 ---
 
+## 실험 노트 (2026-05-28) — wrist 카메라 설치 후 녹화 파이프라인 재검증
+
+### 환경
+- conda 환경: `piper`
+- top 카메라: RealSense D435IF 시리얼 `327122074262`
+- wrist 카메라: RealSense D435IF 시리얼 `243322071626` (신규 설치)
+- Piper master-slave, can0
+
+### 수행 내용
+
+**2-3 (RealSense 시리얼 확인):**
+- 카메라 2대 정상 인식, 시리얼 기존 기록과 일치
+- top: `327122074262`, wrist: `243322071626`
+
+**2-2 (Piper + 카메라 동시 연결):**
+- EEF non-zero 확인: `{'x.pos': 58050.0, 'y.pos': 2853.0, 'z.pos': 220777.0, ...}`
+- top/wrist shape 모두 `(480, 640, 3)` 정상
+
+**3-1 (send_action no-op 검증):**
+- `send_action returned: True`, `obs == action: True` — 위험 D 없음 확인
+
+**3-2 (실제 녹화):**
+- 3 에피소드, top + wrist 카메라 동시 녹화
+- 저장 경로: `/home/ugrp308/Group43/datasets/piper-test`
+- 에피소드당 약 370프레임 (→ 키로 조기 종료, 약 12초)
+- SVT-AV1 코덱으로 mp4 정상 인코딩 완료
+
+### 발견 사항
+
+**데이터셋 저장 경로:**
+- 기본값(`~/.cache/huggingface/lerobot/`) 대신 `--dataset.root` 로 `/home/ugrp308/Group43/datasets/` 지정
+- README, EXPERIMENT.md 명령어 모두 실제 시리얼 번호 및 경로로 업데이트 완료
+
+**카메라 미리보기:**
+- `preview_camera.py` — top/wrist 좌우 병렬 표시, matplotlib TkAgg 백엔드 사용
+- 뷰 확인: top은 작업 공간 전체, wrist는 그리퍼 시점에서 파지 대상 클로즈업
+
+**piper_sdk V2 원점 복귀:**
+- `ReqMasterArmMoveToHome(mode)` 확인 (`piper_interface_v2.py:3659`)
+  - mode=0: master-slave 모드 복원
+  - mode=1: master arm 원점 복귀
+  - mode=2: master + slave 둘 다 원점 복귀
+
+---
+
 ## 실험 노트 (2026-05-07) — SmolVLA 파이프라인 전체 검증
 
 ### 환경
