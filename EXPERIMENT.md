@@ -361,8 +361,11 @@ lerobot-record \
     --robot.type=piper \
     --robot.control_mode=teleop \
     --robot.can_interface=can0 \
+    --robot.top_serial=327122074262 \
+    --robot.wrist_serial=243322071626 \
     --teleop.type=piper_slave_only \
     --dataset.repo_id=local/piper-test \
+    --dataset.root=/home/ugrp308/Group43/datasets/piper-test \
     --dataset.single_task="test task" \
     --dataset.push_to_hub=false
 ```
@@ -376,7 +379,7 @@ lerobot-record \
 ```bash
 python -c "
 import pandas as pd, pathlib
-p = sorted(pathlib.Path.home().glob('.cache/huggingface/lerobot/local/piper-test/data/**/*.parquet'))[0]
+p = sorted(pathlib.Path('/home/ugrp308/Group43/datasets/piper-test').glob('data/**/*.parquet'))[0]
 df = pd.read_parquet(p)
 print(df.columns.tolist())
 state = df['observation.state'].iloc[0]
@@ -534,6 +537,51 @@ piper-async-client \
 
 ---
 
+## 실험 노트 (2026-05-19) — SmolVLA 파이프라인 전체 검증
+
+### 환경
+- conda 환경: `piper`
+- lerobot 0.4.0, SmolVLA (`lerobot/smolvla_base`, 450M)
+- top 카메라 단독 (RealSense D435IF, 시리얼: 327122074262)
+- Piper single arm, can0
+
+### 수행 내용
+
+**녹화:**
+- `pick the pan` 태스크, top 카메라 1대, 5 에피소드 (2170 프레임)
+- `local/piper-smolvla` 데이터셋으로 저장
+
+**Fine-tuning:**
+- `lerobot-train --policy.type=smolvla --policy.pretrained_path=lerobot/smolvla_base`
+- expert 레이어만 학습 (100M / 450M), VLM frozen
+- 5000 steps, batch_size=8, 약 12분 소요
+- loss: 0.242 → 0.010 수렴
+
+**추론:**
+- `smolvla-inference` 스크립트로 실제 로봇 연결
+- action clamp (녹화 데이터 EEF 범위 기반) 안전장치 적용
+- 50 steps 정상 동작 확인 (에러 없음)
+- 결과: 로봇이 움직이나 팬 근처까지는 못 감 → 데이터 부족 (5 에피소드)
+
+### 발견 사항
+
+**정책 전환 (pi0 → smolvla):**
+- `lerobot/pi0`은 v0.1 포맷 → lerobot 0.4.0과 호환 안 됨
+- `lerobot/pi0_base`는 호환되나 ALOHA 기준 카메라 3개 필요 → Piper 단일 카메라와 mismatch
+- `lerobot/smolvla_base`로 전환 — 카메라 키 이름에 무관하게 ds_meta 기반으로 자동 설정
+
+**카메라 warmup:**
+- warmup_s=0으로 설정 시 추론 스크립트에서 async_read timeout 발생
+- connect 후 `time.sleep(8.0)` 추가로 해결
+- 재연결 시 간헐적 timeout — 재시도로 해결 가능
+
+**학습 방식:**
+- `train_expert_only=True` (기본값) — VLM frozen, expert만 학습
+- 소량 데이터(5 에피소드)에서는 이 방식이 적절
+- 데이터 충분히 늘어나면 LoRA로 VLM도 일부 학습 고려
+
+---
+
 ## 실험 노트 (2026-04-29)
 
 ### 환경
@@ -583,8 +631,8 @@ piper-async-client \
 | 2-3 | RealSense 시리얼 번호 확인 | 카메라 | 없음 | [x] |
 | 3-1 | send_action no-op + 캐시 검증 | CAN + arm | 낮음 | [x] |
 | 3-2 | 실제 녹화 (카메라 포함) | CAN + arm + 카메라 | **중간** | [x] |
-| 4-1 | 추론 시뮬레이션 재확인 | ✗ | 없음 | [ ] |
-| 4-2 | 실제 추론 (5 스텝→50 스텝) | 풀 셋업 + 체크포인트 | **높음** | [ ] |
+| 4-1 | 추론 시뮬레이션 재확인 | ✗ | 없음 | [x] |
+| 4-2 | 실제 추론 (5 스텝→50 스텝) | 풀 셋업 + 체크포인트 | **높음** | [x] |
 | 5-1 | async 의존성 설치 | ✗ | 없음 | [ ] |
 | 5-2 | PolicyServer 기동 (GPU 서버) | GPU 서버 | 없음 | [ ] |
 | 5-3 | 비동기 추론 시뮬레이션 | 네트워크 | 없음 | [ ] |
