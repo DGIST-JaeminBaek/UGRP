@@ -537,7 +537,7 @@ piper-async-client \
 
 ---
 
-## 실험 노트 (2026-05-19) — SmolVLA 파이프라인 전체 검증
+## 실험 노트 (2026-05-07) — SmolVLA 파이프라인 전체 검증
 
 ### 환경
 - conda 환경: `piper`
