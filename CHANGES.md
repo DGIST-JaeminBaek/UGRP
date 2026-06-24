@@ -4,6 +4,44 @@
 
 ---
 
+## [현재 상태] — 2026-06-12 중간보고서 기준
+
+이 섹션은 코드의 세부 변경 이력이라기보다, 이후 문서 정리와 개발 방향 결정을 위한 현재 기준선이다.
+
+### 전체 파이프라인 검증 상태
+
+- PiPER 제어 PC와 CAN 통신 모듈을 연동하고, Master-Slave teleoperation 환경을 구성했다.
+- Ubuntu 24.04에서 제조사 SDK/ROS2 호환성 문제가 있어 실험 환경을 Ubuntu 22.04로 전환했다.
+- Master/Slave 모드 설정 문제를 수정한 뒤, master arm 입력이 slave arm에 정상 반영되고 joint/gripper 상태값이 실시간 수신됨을 확인했다.
+- LeRobot 기본 record 구조가 PiPER의 CAN 기반 direct teleoperation 방식과 충돌하지 않도록, slave arm에 별도 제어 명령을 보내지 않고 수신 상태값을 기록하는 플러그인 구조로 재구성했다.
+- 기존 joint-space 기반 기록/제어를 end-effector absolute 좌표 기반 기록/제어로 전환했다.
+- 카메라 없는 조건에서 EEF episode가 parquet로 저장됨을 확인했고, 이후 top-view/wrist-view 카메라를 포함한 비전 데이터 기록도 확인했다.
+- SmolVLA 기반으로 녹화 → fine-tuning → 추론 → 실제 PiPER 동작까지 이어지는 전체 파이프라인을 50 step 동안 오류 없이 검증했다.
+
+### 모델 적용 현황
+
+- 초기에는 `pi0` 적용을 검토했지만, `lerobot/pi0` 체크포인트 포맷과 LeRobot 0.4.0 간 호환성 문제가 있었다.
+- `lerobot/pi0_base`는 LeRobot 0.4.x에서 로드 가능하지만, ALOHA 기준 카메라 구성과 Piper 실험 구성 사이의 mismatch가 있어 우선 검증 모델에서 제외했다.
+- RTX 4070 Ti 단일 로컬 환경에서는 pi0급 대형 VLA 모델의 안정적인 실시간 추론과 로봇 제어를 동시에 처리하기 어렵다고 판단했다.
+- 우선 검증 모델은 `lerobot/smolvla_base`로 전환했다.
+- `pick the pan` 작업에서 top-view 카메라 1대, 5 episode, 총 2170 frame을 수집했다.
+- SmolVLA fine-tuning은 VLM backbone을 고정하고 expert layer만 학습하는 방식으로 진행했다.
+- 학습 조건: 5000 step, batch size 8, 약 12분.
+- 학습 loss는 0.242에서 0.010으로 감소했다.
+- 실제 PiPER 추론은 `smolvla-inference`로 수행했고, 녹화 데이터 기반 EEF action clamp를 안전장치로 적용했다.
+- 50 step 실제 로봇 동작은 오류 없이 완료했지만, demonstration 데이터가 5 episode로 제한되어 목표물 근처까지 안정적으로 도달하지는 못했다.
+
+### 현재 남은 핵심 과제
+
+- 저장된 EEF state와 비전 데이터가 실제 로봇의 물리적 궤적을 일관되게 반영하는지 검증해야 한다.
+- 녹화-재생 검증을 통해 데이터 동기화, 좌표계 처리, 저장 형식의 보완 필요 여부를 확인해야 한다.
+- pi0 등 대형 VLA 모델 적용을 위해 정책 추론 서버와 로봇 제어 PC를 분리하는 비동기 추론 구조를 검증해야 한다.
+- 연구실 서버를 policy server로 사용하고, 로봇 PC와 gRPC로 연결해 action 전달 지연과 안정성을 확인해야 한다.
+- 충분한 demonstration episode를 수집한 뒤 SmolVLA와 pi0 등 후보 모델을 동일 조건에서 비교해야 한다.
+- 비교 지표는 학습 시간, 추론 안정성, 작업 성공률을 우선한다.
+
+---
+
 ## [현재] — 2026-05-19
 
 ### `lerobot_robot_piper/smolvla_inference.py` — 신규 추가
@@ -23,9 +61,10 @@
 ### 정책 전환: pi0 → SmolVLA
 
 - `lerobot/pi0` 체크포인트가 lerobot 0.4.0과 버전 불일치로 호환 안 됨
-- `lerobot/smolvla_base` (450M, v0.4.x 호환)로 전환
+- `lerobot/pi0_base`는 로드 가능하지만, Piper 단일/이중 카메라 구성과 맞지 않는 부분이 있어 우선 검증 모델에서 제외
+- `lerobot/smolvla_base` (450M, v0.4.x 호환)로 우선 전환
 - expert 레이어만 학습하는 partial fine-tuning 방식
-- 상세 분석 → [DECISION_PI0_COMPAT.md](DECISION_PI0_COMPAT.md)
+- 기존 pi0 호환성 검토 메모 → [DECISION_PI0_COMPAT.md](DECISION_PI0_COMPAT.md)
 
 ---
 
