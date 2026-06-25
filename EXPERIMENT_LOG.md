@@ -4,6 +4,30 @@
 
 ---
 
+## 2026-06-25: `piper-replay` 경로 정리
+
+### 코드 기준 확인 사항
+
+- LeRobot 기본 `lerobot-replay`는 dataset `action`을 그대로 `robot.send_action()`에 재전송하는 단순 구조다.
+- PiPER teleop 녹화에서는 `control_mode=teleop`라 `send_action()`이 no-op이고, recorded `action`은 PC가 보낸 명령이라기보다 그 프레임의 slave arm EEF trajectory다.
+- 따라서 PiPER 재현성 검증은 `lerobot-replay`보다 PiPER 전용 replay 경로가 더 적합하다.
+
+### 추가한 replay 안전 기능
+
+- 실제 replay는 내부적으로 `control_mode=user` 강제
+- `--use_devices=false` dry-run 지원
+- `--start_frame`, `--max_steps`, `--replay_fps` 지원
+- 첫 recorded action과 현재 live EEF 차이 검사
+- all-zero / outlier action 검사
+- 실제 관측 EEF와 recorded action 차이 로그
+
+### 실험 메모
+
+- 2026-06-28 실제 로봇 검증은 [EXPERIMENT.md](EXPERIMENT.md)의 `현재 우선 실험 1` 절차를 따른다.
+- dataset 인자는 녹화 때 쓴 `repo_id`와 `root`를 그대로 맞춰 주는 것이 핵심이다.
+
+---
+
 ## 2026-05-28: wrist 카메라 설치 후 녹화 파이프라인 재검증
 
 ### 환경

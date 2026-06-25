@@ -7,6 +7,26 @@
 
 ---
 
+## 시작 프롬프트
+
+실험 PC에서 Codex나 ChatGPT에게 현재 문서 기준으로 실험을 이어서 설명받고 싶을 때는 아래 프롬프트로 시작한다.
+
+```text
+/home/jmbaek/UGRP 레포에서 실험을 이어서 도와줘.
+먼저 EXPERIMENT.md와 EXPERIMENT_LOG.md를 읽고 현재 상태를 코드/실험 기준으로 요약해줘.
+그 다음 오늘 진행할 실험을 안전 절차부터 설명하고, 필요한 명령을 순서대로 정리해줘.
+PiPER replay가 포함되면 piper-replay 기준으로 dataset 인자 형식, dry-run, 실제 arm 검증 순서를 같이 설명해줘.
+문서보다 코드 기준으로 설명하고, 위험 시나리오와 중단 조건도 함께 말해줘.
+```
+
+짧게 시작하고 싶으면 아래처럼 요청해도 된다.
+
+```text
+EXPERIMENT.md, EXPERIMENT_LOG.md 읽고 오늘 PiPER replay 실험 절차만 간단히 설명해줘.
+```
+
+---
+
 ## 현재 상태 요약
 
 ### 완료된 검증
@@ -274,6 +294,135 @@ for p in paths:
 - top/wrist frame 누락 여부
 - warmup 이후 첫 frame timeout 여부
 - episode별 mp4 파일 생성 여부
+
+### 1-4. `piper-replay` dry-run
+
+목표: 실제 arm 연결 전에 dataset 인자가 올바른지, episode/frame 범위가 맞는지, recorded action/state에 명백한 이상이 없는지 확인한다.
+
+`piper-replay`는 LeRobot 기본 `lerobot-replay` 대신 PiPER teleop dataset용으로 만든 전용 replay 경로다.
+PiPER teleop 녹화에서는 recorded `action`이 "PC가 그때 보낸 명령"이 아니라 "그 프레임에서 관측된 slave arm EEF trajectory"에 가깝기 때문에, 재현성 검증은 이 trajectory를 다시 PiPER에 보내는 방식으로 확인해야 한다.
+
+#### dataset 인자 규칙
+
+- `--dataset_repo_id`: 녹화할 때 사용한 LeRobot repo id. 예: `local/piper-test`
+- `--dataset_root`: 해당 repo id 디렉터리가 실제로 들어 있는 상위 경로가 아니라, **그 repo id 자체의 root 경로**
+- `--episode`: replay할 episode index
+
+예:
+
+- 녹화 명령이 `--dataset.repo_id=local/piper-test`
+- 녹화 경로가 `--dataset.root=/home/ugrp308/Group43/datasets/piper-test`
+
+라면 replay도 아래처럼 동일하게 준다.
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-test \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-test \
+    --episode=0 \
+    --use_devices=false \
+    --start_frame=0 \
+    --max_steps=20 \
+    --replay_fps=5
+```
+
+다른 데이터셋 예:
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-smolvla \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-smolvla \
+    --episode=0 \
+    --use_devices=false \
+    --start_frame=0 \
+    --max_steps=20 \
+    --replay_fps=5
+```
+
+확인:
+
+- episode를 정상적으로 찾는다.
+- `Recorded episode checks` 로그가 출력된다.
+- all-zero action/state가 없다.
+- out-of-range action 경고가 없다.
+- dry-run step 로그가 정상적으로 이어진다.
+
+#### console script 갱신
+
+`piper-replay`를 새로 추가했으므로 실험 PC에서 코드 갱신 후 한 번 다시 설치한다.
+
+```bash
+cd /home/ugrp308/Group43/UGRP
+pip install -e .
+```
+
+### 1-5. `piper-replay` 실제 arm 검증
+
+목표: 저장된 episode action trajectory를 PiPER에 다시 보내서, 실제 live EEF가 recorded trajectory를 비슷하게 따라가는지 확인한다.
+
+실행 전 체크:
+
+- [ ] `pip install -e .` 재실행 완료
+- [ ] `can0` 활성화 완료
+- [ ] `EEF non-zero OK` 확인 완료
+- [ ] dry-run으로 같은 episode 확인 완료
+- [ ] arm 주변 50 cm 확보
+- [ ] 키보드에서 즉시 `Ctrl+C` 가능
+- [ ] 처음에는 `max_steps=5`로 시작
+
+기본 실기 명령:
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-test \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-test \
+    --episode=0 \
+    --use_devices=true \
+    --can_interface=can0 \
+    --start_frame=0 \
+    --max_steps=5 \
+    --replay_fps=5
+```
+
+중간 구간만 확인하고 싶을 때:
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-test \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-test \
+    --episode=0 \
+    --use_devices=true \
+    --can_interface=can0 \
+    --start_frame=100 \
+    --max_steps=10 \
+    --replay_fps=5
+```
+
+`start_frame`은 episode 내부 frame offset이다. `max_steps`는 그 시점부터 몇 frame만 replay할지 정한다.
+
+#### 통과 기준
+
+- `Initial live EEF vs first recorded action` 로그가 지나치게 크지 않다.
+- `Step .... before-send gap`와 `after-send gap`이 기록된다.
+- 실제 arm이 급격히 튀지 않는다.
+- recorded trajectory와 전혀 다른 방향으로 움직이지 않는다.
+- 작은 `max_steps`에서 안전하게 정지할 수 있다.
+
+#### 이상 시 대응
+
+- 첫 시작부터 gap이 너무 크면 arm을 recorded 시작 pose 근처로 수동 이동한 뒤 다시 시작한다.
+- `Recorded episode failed safety validation`가 뜨면 dataset을 먼저 다시 점검한다.
+- 움직임이 과하거나 예상과 다르면 즉시 `Ctrl+C`.
+- 멈추지 않으면 `sudo ip link set can0 down`.
+
+### 1-6. 2026-06-28 실험 제안 순서
+
+1. `local/piper-test` 또는 이번에 확인할 실제 dataset 경로를 다시 확인한다.
+2. `pip install -e .`로 `piper-replay` console script를 갱신한다.
+3. `--use_devices=false`로 episode 0, `max_steps=20` dry-run을 먼저 돌린다.
+4. 같은 episode를 `--use_devices=true`, `max_steps=5`로 실제 arm에서 확인한다.
+5. 안정적이면 `max_steps=10`, `20`으로 늘린다.
+6. 필요하면 `start_frame`을 바꿔 중간 trajectory도 부분 replay한다.
 
 ---
 
