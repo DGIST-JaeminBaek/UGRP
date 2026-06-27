@@ -67,6 +67,7 @@ class Piper(Robot):
     def disconnect(self) -> None:
         Piper._instances.pop(self.config.can_interface, None)
         if self._iface is not None:
+            self._iface.disconnect()
             self._iface = None
         for cam in self.cameras.values():
             cam.disconnect()

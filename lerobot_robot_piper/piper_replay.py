@@ -211,6 +211,11 @@ def replay(args: argparse.Namespace) -> None:
 
     actions = data.actions[start:end]
     frame_indices = data.frame_indices[start:end]
+    if len(actions) == 0:
+        raise ValueError(
+            "Selected replay range is empty. "
+            "Check start_frame/max_steps and make sure they select at least one frame."
+        )
     replay_fps = args.replay_fps or data.fps
     period_s = 1.0 / replay_fps
 
