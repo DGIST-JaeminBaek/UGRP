@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 ACTION_KEYS = [f"{name}.pos" for name in EEF_NAMES] + ["gripper.pos"]
 
 # Conservative absolute raw-SDK workspace guard rails for replay validation.
-DEFAULT_ACTION_MIN = np.array([-100000.0, -300000.0, 0.0, -360000.0, -360000.0, -360000.0, 0.0])
+DEFAULT_ACTION_MIN = np.array([-100000.0, -300000.0, 0.0, -360000.0, -360000.0, -360000.0, -5000.0])
 DEFAULT_ACTION_MAX = np.array([500000.0, 300000.0, 600000.0, 360000.0, 360000.0, 360000.0, 80000.0])
 
 # Per-step absolute jump guard rails. Actions are absolute poses, so large jumps usually indicate
@@ -77,7 +77,7 @@ def _preview_indices(mask: np.ndarray, limit: int = 10) -> str:
 
 def _load_episode_data(repo_id: str, root: str | None, episode: int) -> ReplayData:
     meta = LeRobotDatasetMetadata(repo_id, root=root)
-    data_path = meta.get_data_file_path(episode)
+    data_path = meta.root / meta.get_data_file_path(episode)
     df = pd.read_parquet(data_path)
     df = df[df["episode_index"] == episode].reset_index(drop=True)
     if df.empty:
