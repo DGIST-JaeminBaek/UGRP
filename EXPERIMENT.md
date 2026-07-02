@@ -302,6 +302,13 @@ for p in paths:
 `piper-replay`는 LeRobot 기본 `lerobot-replay` 대신 PiPER teleop dataset용으로 만든 전용 replay 경로다.
 PiPER teleop 녹화에서는 recorded `action`이 "PC가 그때 보낸 명령"이 아니라 "그 프레임에서 관측된 slave arm EEF trajectory"에 가깝기 때문에, 재현성 검증은 이 trajectory를 다시 PiPER에 보내는 방식으로 확인해야 한다.
 
+현재 `piper-replay`에는 두 가지 운용 모드가 있다.
+
+- faithful replay: 모든 recorded frame을 순서대로 그대로 보낸다.
+- filtered replay: 마지막으로 실제 전송한 action 대비 변화가 작은 frame은 skip한다.
+
+기본값은 faithful replay다. `--min_xyz_delta`, `--min_rpy_delta`, `--min_gripper_delta`를 0보다 크게 주면 filtered replay처럼 동작한다.
+
 #### dataset 인자 규칙
 
 - `--dataset_repo_id`: 녹화할 때 사용한 LeRobot repo id. 예: `local/piper-test`
@@ -326,6 +333,22 @@ piper-replay \
     --replay_fps=5
 ```
 
+filtered replay dry-run 예:
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-test \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-test \
+    --episode=0 \
+    --use_devices=false \
+    --start_frame=0 \
+    --max_steps=20 \
+    --replay_fps=5 \
+    --min_xyz_delta=3000 \
+    --min_rpy_delta=2000 \
+    --min_gripper_delta=1000
+```
+
 다른 데이터셋 예:
 
 ```bash
@@ -346,10 +369,13 @@ piper-replay \
 - all-zero action/state가 없다.
 - out-of-range action 경고가 없다.
 - dry-run step 로그가 정상적으로 이어진다.
+- filtered replay를 쓸 경우 `skipped-send` 로그와 `commands_sent`, `frames_skipped` 요약이 출력된다.
 
 #### console script 갱신
 
-`piper-replay`를 새로 추가했으므로 실험 PC에서 코드 갱신 후 한 번 다시 설치한다.
+`piper-replay`를 처음 추가했을 때는 console script 등록을 위해 한 번 `pip install -e .`가 필요했다.
+이후 `.py` 코드만 수정한 경우 editable 설치 상태라면 보통 재설치 없이 바로 반영된다.
+다만 entrypoint나 의존성을 바꾼 경우에는 다시 설치한다.
 
 ```bash
 cd /home/ugrp308/Group43/UGRP
@@ -384,6 +410,23 @@ piper-replay \
     --replay_fps=5
 ```
 
+filtered replay 실기 예:
+
+```bash
+piper-replay \
+    --dataset_repo_id=local/piper-test \
+    --dataset_root=/home/ugrp308/Group43/datasets/piper-test \
+    --episode=0 \
+    --use_devices=true \
+    --can_interface=can0 \
+    --start_frame=0 \
+    --max_steps=5 \
+    --replay_fps=5 \
+    --min_xyz_delta=3000 \
+    --min_rpy_delta=2000 \
+    --min_gripper_delta=1000
+```
+
 중간 구간만 확인하고 싶을 때:
 
 ```bash
@@ -399,11 +442,13 @@ piper-replay \
 ```
 
 `start_frame`은 episode 내부 frame offset이다. `max_steps`는 그 시점부터 몇 frame만 replay할지 정한다.
+`min_xyz_delta`, `min_rpy_delta`, `min_gripper_delta`는 마지막으로 실제 전송한 action 대비 변화량이 이 값보다 작은 frame을 skip한다.
 
 #### 통과 기준
 
 - `Initial live EEF vs first recorded action` 로그가 지나치게 크지 않다.
 - `Step .... before-send gap`와 `after-send gap`이 기록된다.
+- filtered replay에서는 `skipped-send`가 과도하지 않으면서도 arm의 미세 진동이 줄어든다.
 - 실제 arm이 급격히 튀지 않는다.
 - recorded trajectory와 전혀 다른 방향으로 움직이지 않는다.
 - 작은 `max_steps`에서 안전하게 정지할 수 있다.
@@ -420,9 +465,10 @@ piper-replay \
 1. `local/piper-test` 또는 이번에 확인할 실제 dataset 경로를 다시 확인한다.
 2. `pip install -e .`로 `piper-replay` console script를 갱신한다.
 3. `--use_devices=false`로 episode 0, `max_steps=20` dry-run을 먼저 돌린다.
-4. 같은 episode를 `--use_devices=true`, `max_steps=5`로 실제 arm에서 확인한다.
-5. 안정적이면 `max_steps=10`, `20`으로 늘린다.
-6. 필요하면 `start_frame`을 바꿔 중간 trajectory도 부분 replay한다.
+4. 필요하면 `--min_xyz_delta`, `--min_rpy_delta`, `--min_gripper_delta`를 넣어 filtered replay threshold를 먼저 조정한다.
+5. 같은 episode를 `--use_devices=true`, `max_steps=5`로 실제 arm에서 확인한다.
+6. 안정적이면 `max_steps=10`, `20`으로 늘린다.
+7. 필요하면 `start_frame`을 바꿔 중간 trajectory도 부분 replay한다.
 
 ---
 

@@ -51,6 +51,8 @@ LeRobot의 일반적인 record 구조는 PC가 teleoperator 입력을 읽고 rob
 
 `control_mode=teleop`에서는 `send_action()`이 no-op으로 동작해 CAN Master-Slave sync와 충돌하지 않게 하고, `control_mode=user`에서는 추론 스크립트가 직접 `EndPoseCtrl()`로 arm을 제어합니다.
 
+`piper-replay`는 recorded EEF trajectory를 frame-by-frame으로 다시 보내는 faithful replay가 기본이다. 필요하면 작은 변화 frame을 skip하는 filtered replay를 `--min_xyz_delta`, `--min_rpy_delta`, `--min_gripper_delta`로 켤 수 있다.
+
 ---
 
 ## 설치

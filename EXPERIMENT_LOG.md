@@ -21,6 +21,18 @@
 - all-zero / outlier action 검사
 - 실제 관측 EEF와 recorded action 차이 로그
 
+### 이후 수정 반영 사항
+
+- replay 종료 시 `Piper.disconnect()`가 실제 SDK `disconnect()`까지 호출하도록 수정
+- `start_frame` / `max_steps` 결과가 빈 구간이면 즉시 에러를 내도록 수정
+- `large_jumps`는 warning만 남기고 replay 실패 조건에서는 제외
+- gripper replay는 `abs()`를 제거하고 signed raw SDK 값을 그대로 `GripperCtrl()`에 전달하도록 수정
+- `piper-replay`에 filtered replay 옵션 추가:
+  - `--min_xyz_delta`
+  - `--min_rpy_delta`
+  - `--min_gripper_delta`
+- dry-run / 실기 로그에 `commands_sent`, `frames_skipped`, `skipped-send` 요약이 보이도록 수정
+
 ### 실험 메모
 
 - 2026-06-28 실제 로봇 검증은 [EXPERIMENT.md](EXPERIMENT.md)의 `현재 우선 실험 1` 절차를 따른다.

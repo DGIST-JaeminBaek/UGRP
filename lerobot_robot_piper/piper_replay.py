@@ -26,8 +26,9 @@ ACTION_KEYS = [f"{name}.pos" for name in EEF_NAMES] + ["gripper.pos"]
 DEFAULT_ACTION_MIN = np.array([-100000.0, -300000.0, 0.0, -360000.0, -360000.0, -360000.0, -5000.0])
 DEFAULT_ACTION_MAX = np.array([500000.0, 300000.0, 600000.0, 360000.0, 360000.0, 360000.0, 80000.0])
 
-# Per-step absolute jump guard rails. Actions are absolute poses, so large jumps usually indicate
-# a corrupted trajectory, wrong dataset, or an unsafe initial condition.
+# Per-step absolute jump guard rails. For replay, these are warnings only: a recorded teleop
+# trajectory can legitimately contain abrupt changes, and the operator may intentionally want
+# to reproduce them.
 DEFAULT_STEP_DELTA_MAX = np.array([120000.0, 120000.0, 120000.0, 90000.0, 90000.0, 90000.0, 50000.0])
 
 # First commanded pose vs current live EEF tolerance before sending the first action.
@@ -63,6 +64,34 @@ def _diff_summary(target: np.ndarray, actual: np.ndarray) -> str:
         f"xyz_max={diff[:3].max():.0f} "
         f"rpy_max={diff[3:6].max():.0f} "
         f"gripper={diff[6]:.0f}"
+    )
+
+
+def _action_summary(action: np.ndarray) -> str:
+    return (
+        f"xyz={np.array2string(action[:3], precision=0, separator=', ')} "
+        f"rpy={np.array2string(action[3:6], precision=0, separator=', ')} "
+        f"gripper={action[6]:.0f}"
+    )
+
+
+def _should_send_action(action: np.ndarray, last_sent_action: np.ndarray | None, args: argparse.Namespace) -> bool:
+    if last_sent_action is None:
+        return True
+
+    diff = np.abs(action - last_sent_action)
+    xyz_changed = diff[:3].max() >= args.min_xyz_delta
+    rpy_changed = diff[3:6].max() >= args.min_rpy_delta
+    gripper_changed = diff[6] >= args.min_gripper_delta
+    return xyz_changed or rpy_changed or gripper_changed
+
+
+def _filter_summary(action: np.ndarray, last_sent_action: np.ndarray) -> str:
+    diff = np.abs(action - last_sent_action)
+    return (
+        f"delta_xyz_max={diff[:3].max():.0f} "
+        f"delta_rpy_max={diff[3:6].max():.0f} "
+        f"delta_gripper={diff[6]:.0f}"
     )
 
 
@@ -170,7 +199,6 @@ def _validate_recorded_episode(data: ReplayData, allow_invalid: bool) -> None:
         or state_zero_mask.any()
         or abs_low_mask.any()
         or abs_high_mask.any()
-        or jump_mask.any()
     )
     if invalid and not allow_invalid:
         raise ValueError(
@@ -220,16 +248,22 @@ def replay(args: argparse.Namespace) -> None:
     period_s = 1.0 / replay_fps
 
     logger.info(
-        "Replay plan | episode=%d start_frame=%d steps=%d replay_fps=%d use_devices=%s",
+        "Replay plan | episode=%d start_frame=%d steps=%d replay_fps=%d use_devices=%s min_xyz_delta=%.0f min_rpy_delta=%.0f min_gripper_delta=%.0f",
         data.episode_index,
         start,
         len(actions),
         replay_fps,
         args.use_devices,
+        args.min_xyz_delta,
+        args.min_rpy_delta,
+        args.min_gripper_delta,
     )
 
     robot: Piper | None = None
     step = 0
+    commands_sent = 0
+    frames_skipped = 0
+    last_sent_action: np.ndarray | None = None
     try:
         if args.use_devices:
             robot = _connect_robot(args)
@@ -247,8 +281,9 @@ def replay(args: argparse.Namespace) -> None:
         for local_idx, action in enumerate(actions):
             t0 = time.perf_counter()
             frame_idx = frame_indices[local_idx]
+            should_send = _should_send_action(action, last_sent_action, args)
 
-            if robot is not None:
+            if robot is not None and should_send:
                 before_obs = robot.get_observation()
                 before_vec = _obs_to_vector(before_obs)
                 _log_live_gap(
@@ -269,6 +304,16 @@ def replay(args: argparse.Namespace) -> None:
                     action,
                     after_vec,
                 )
+                last_sent_action = action
+                commands_sent += 1
+            elif robot is not None:
+                logger.info(
+                    "Step %04d frame=%d skipped-send | %s",
+                    step,
+                    frame_idx,
+                    _filter_summary(action, last_sent_action),
+                )
+                frames_skipped += 1
             else:
                 if data.states is not None:
                     recorded_state = data.states[start + local_idx]
@@ -278,12 +323,23 @@ def replay(args: argparse.Namespace) -> None:
                         frame_idx,
                         _diff_summary(action, recorded_state),
                     )
-                logger.info(
-                    "Dry-run step %04d frame=%d | action=%s",
-                    step,
-                    frame_idx,
-                    np.array2string(action, precision=1, separator=", "),
-                )
+                if should_send:
+                    logger.info(
+                        "Dry-run step %04d frame=%d | action=%s",
+                        step,
+                        frame_idx,
+                        _action_summary(action),
+                    )
+                    last_sent_action = action
+                    commands_sent += 1
+                else:
+                    logger.info(
+                        "Dry-run step %04d frame=%d skipped-send | %s",
+                        step,
+                        frame_idx,
+                        _filter_summary(action, last_sent_action),
+                    )
+                    frames_skipped += 1
 
             elapsed = time.perf_counter() - t0
             sleep_s = max(0.0, period_s - elapsed)
@@ -294,7 +350,12 @@ def replay(args: argparse.Namespace) -> None:
     finally:
         if robot is not None:
             robot.disconnect()
-        logger.info("Replay finished after %d steps", step)
+        logger.info(
+            "Replay finished after %d steps | commands_sent=%d frames_skipped=%d",
+            step,
+            commands_sent,
+            frames_skipped,
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -310,6 +371,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start_frame", type=int, default=0, help="Episode-local frame offset")
     parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of replayed frames")
     parser.add_argument("--replay_fps", type=int, default=None, help="Override recorded dataset fps")
+    parser.add_argument(
+        "--min_xyz_delta",
+        type=float,
+        default=0.0,
+        help="Skip frames whose xyz change from the last sent action is smaller than this threshold",
+    )
+    parser.add_argument(
+        "--min_rpy_delta",
+        type=float,
+        default=0.0,
+        help="Skip frames whose rpy change from the last sent action is smaller than this threshold",
+    )
+    parser.add_argument(
+        "--min_gripper_delta",
+        type=float,
+        default=0.0,
+        help="Skip frames whose gripper change from the last sent action is smaller than this threshold",
+    )
     parser.add_argument(
         "--observe_after_send_delay_s",
         type=float,

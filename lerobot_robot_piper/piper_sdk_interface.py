@@ -78,7 +78,8 @@ class PiperSDKInterface:
         # calling MotionCtrl_2 would reset the control mode and cause unwanted movement.
         # Callers should set the mode explicitly when needed (e.g. before inference).
 
-        # Get the min and max positions for each joint and gripper
+        # Cache joint angle limits and keep a conservative placeholder range for the
+        # gripper helper path below. Replay/inference uses raw SDK gripper units directly.
         try:
             angel_status = self.piper.GetAllMotorAngleLimitMaxSpd()
             # SDK motor list appears 1-indexed -> extract 1..6
@@ -93,8 +94,11 @@ class PiperSDKInterface:
 
     def set_joint_positions(self, positions):
         """
-        positions: list of 7 floats (first 6 are -100..100 percent; last is gripper 0..100).
-        This helper maps percent -> degrees/mm and sends to SDK. Use set_joint_positions_deg for degree inputs.
+        positions: list of 7 floats.
+        The first 6 values are joint percentages in [-100, 100].
+        The 7th value is a gripper percentage in [0, 100] used only by this helper path.
+        Replay/inference paths do not use this helper; they pass signed raw SDK gripper
+        stroke values directly to `GripperCtrl`.
         """
         if not isinstance(positions, (list, tuple)) or len(positions) < 7:
             raise ValueError("positions must be a sequence of length >=7")
@@ -212,12 +216,12 @@ class PiperSDKInterface:
         Mirrors LoRA-SP's ctrl_end_pose():
           MotionCtrl_2(0x01, 0x00, ...) → end-pose mode
           EndPoseCtrl(*eef_data)
-          GripperCtrl(abs(angle), effort, 0x01, 0)
+          GripperCtrl(angle, effort, 0x01, 0)
         """
         self.piper.MotionCtrl_2(0x01, 0x00, 20, 0x00)
         self.piper.EndPoseCtrl(*[int(v) for v in eef_data])
         if gripper_angle is not None:
-            self.piper.GripperCtrl(int(abs(gripper_angle)), gripper_effort, 0x01, 0)
+            self.piper.GripperCtrl(int(gripper_angle), gripper_effort, 0x01, 0)
 
     def zero_configuration(self, wait: float = 5.0) -> None:
         """Move all joints to zero and close gripper. Blocks for `wait` seconds."""
