@@ -7,12 +7,12 @@ VLA(Vision-Language-Action) 모델 관련 이론 조사 자료를 `.md` 파일�
 ```
 UGRP/
 ├─ README.md
-├─ papers/      # 논문 리뷰 — 1편당 1파일
+├─ papers/      # 논문 리뷰
 ├─ models/      # 모델별 정리 (구조, 학습 방식, 입출력 표현)
 ├─ methods/     # 학습·미세조정·추론 기법 정리
 ├─ datasets/    # 데이터 형식과 표현 방식에 대한 조사
 ├─ eval/        # 평가 지표와 벤치마크 정리
-└─ notes/       # 개념 단위 조사, 분류되지 않은 메모, 읽을거리 목록
+└─ notes/       # 개념 단위 조사 등 기타 내용
 ```
 
 
